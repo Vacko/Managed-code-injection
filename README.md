@@ -7,5 +7,7 @@
 ## Step 2: Create the Bootstrap DLL (Bootstrap)
 - Bootstrap: Native DLL that executes code which invokes the .NET runtime, and the .NET runtime causes managed assembly to be loaded.
 
+## Step 3: Inject Bootstrap into target process
+
 ## Support
  Currently supports only 32-bit processes.
