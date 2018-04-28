@@ -4,7 +4,7 @@ using System.Windows.Forms;
 
 namespace CodeInject
 {
-    internal static class Bootstrap
+    internal static class Startup
     {
         #region Private Fields
 
