@@ -8,52 +8,118 @@
 
 EXTERN_C IMAGE_DOS_HEADER __ImageBase;
 
-static const LPCWSTR assemblyPath = L"\\CodeInject.dll";
-static const LPCWSTR classFqn = L"CodeInject.Startup";
-static const LPCWSTR methodName = L"EntryPoint";
-static const LPCWSTR parameter = L"";
+static const LPCTSTR Log      = "LogFile.log";
+static const LPCWSTR Assembly = L"\\CodeInject.dll";
+static const LPCWSTR Class    = L"CodeInject.Startup";
+static const LPCWSTR Method   = L"EntryPoint";
+static const LPCWSTR Param    = L"";
+
 
 DWORD WINAPI CreateDotNetRunTime(LPVOID lpParam)
 {
-	ICLRMetaHost * lpMetaHost = NULL;
-	HRESULT hr = CLRCreateInstance(CLSID_CLRMetaHost, IID_ICLRMetaHost,
-		(LPVOID *)&lpMetaHost);
+	ICLRRuntimeHost* lpRuntimeHost = NULL;
+	ICLRRuntimeInfo* lpRuntimeInfo = NULL;
+	ICLRMetaHost* lpMetaHost = NULL;
+	FILE* file;
 
-	ICLRRuntimeInfo * lpRuntimeInfo = NULL;
+	LPWSTR AppPath = new WCHAR[_MAX_PATH];
+	::GetModuleFileNameW((HINSTANCE)&__ImageBase, AppPath, _MAX_PATH);
+
+	std::wstring tempPath = AppPath;
+	int index = tempPath.rfind('\\');
+	tempPath.erase(index, tempPath.length() - index);
+	tempPath += Assembly;
+
+	fopen_s(&file, Log, "a+");
+
+	HRESULT hr = CLRCreateInstance(
+		CLSID_CLRMetaHost, 
+		IID_ICLRMetaHost, 
+		(LPVOID*)&lpMetaHost
+	);
+
+	if (FAILED(hr))
+	{
+		fprintf(file, "Failed to create CLR instance.\n");
+		fflush(file);
+	}
 
 	hr = lpMetaHost->GetRuntime(
 		L"v4.0.30319", 
-		IID_ICLRRuntimeInfo,
-		(LPVOID *)&lpRuntimeInfo);
+		IID_PPV_ARGS(&lpRuntimeInfo)
+	);
 
-	ICLRRuntimeHost * lpRuntimeHost = NULL;
-	hr = lpRuntimeInfo->GetInterface(CLSID_CLRRuntimeHost, IID_ICLRRuntimeHost,
-		(LPVOID *)&lpRuntimeHost);
+	if (FAILED(hr))
+	{
+		fprintf(file, "Getting runtime failed.\n");
+		fflush(file);
+
+		lpMetaHost->Release();
+	}
+
+	BOOL fLoadable;
+	hr = lpRuntimeInfo->IsLoadable(&fLoadable);
+
+	if (FAILED(hr) || !fLoadable)
+	{
+		fprintf(file, "Runtime can't be loaded into the process.\n");
+		fflush(file);
+
+		lpRuntimeInfo->Release();
+		lpMetaHost->Release();
+	}
+
+	hr = lpRuntimeInfo->GetInterface(
+		CLSID_CLRRuntimeHost, 
+		IID_PPV_ARGS(&lpRuntimeHost)
+	);
+
+	if (FAILED(hr))
+	{
+		fprintf(file, "Failed to acquire CLR runtime.\n");
+		fflush(file);
+
+		lpRuntimeInfo->Release();
+		lpMetaHost->Release();
+	}
 
 	hr = lpRuntimeHost->Start();
 
-	LPWSTR strDLLPath1 = new WCHAR[_MAX_PATH];
-	::GetModuleFileNameW((HINSTANCE)&__ImageBase, strDLLPath1, _MAX_PATH);
+	if (FAILED(hr))
+	{
+		fprintf(file, "Failed to start CLR runtime.\n");
+		fflush(file);
 
-	std::wstring tempPath = strDLLPath1;
-	int index = tempPath.rfind('\\');
-	tempPath.erase(index, tempPath.length() - index);
-	tempPath += assemblyPath;
+		lpRuntimeHost->Release();
+		lpRuntimeInfo->Release();
+		lpMetaHost->Release();
+	}
 
 	DWORD dwRetCode = 0;
-	hr = lpRuntimeHost->ExecuteInDefaultAppDomain(
-		(LPWSTR)tempPath.c_str(),
-		classFqn,
-		methodName,
-		parameter,
-		&dwRetCode);
 
-	//hr = lpRuntimeHost->Stop();
-	//lpRuntimeHost->Release();
+	hr = lpRuntimeHost->ExecuteInDefaultAppDomain(
+		(LPWSTR)tempPath.c_str(), 
+		Class,
+		Method, 
+		Param, 
+		&dwRetCode
+	);
+
+	if (FAILED(hr))
+	{
+		fprintf(file, "Unable to execute assembly.\n");
+		fflush(file);
+
+		lpRuntimeHost->Stop();
+		lpRuntimeHost->Release();
+		lpRuntimeInfo->Release();
+		lpMetaHost->Release();
+	}
+
+	fclose(file);
 
 	return 0;
 }
-
 
 DWORD APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 {
